@@ -199,7 +199,7 @@ yum -y install wget net-tools nfs-utils lrzsz gcc gcc-c++ make cmake libxml2-dev
 
 在/etc/hosts 文件增加如下几行：
 172.16.10.121 master01
-172.16.10.121 node01
+172.16.10.123 node01 gfs1
 配置主机之间无密码登陆
 配置 master01 到 node01 无密码登陆
 在 master01 上操作
