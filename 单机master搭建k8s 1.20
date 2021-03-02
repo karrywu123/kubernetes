@@ -14,8 +14,7 @@ CentOS Linux release 7.9.2009 (Core)
 ##################################################################
 timezone=/usr/share/zoneinfo/Asia/Hong_Kong
 timeserver=pool.ntp.org
-root_password=zt9Br3wL6SosY5Lw
-
+root_password=123456
 ##################################################################
 
 
