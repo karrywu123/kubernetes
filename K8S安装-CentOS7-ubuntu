@@ -1,0 +1,218 @@
+K8S安装-CentOS7-ubuntu
+1. 准备好系统环境
+10.10.10.126 gfs1
+10.10.10.127 gfs2
+
+10.10.10.122 ip-10-10-10-122
+10.10.10.123 ip-10-10-10-123
+10.10.10.124 ip-10-10-10-124
+10.10.10.125 ip-10-10-10-125
+10.10.10.126 ip-10-10-10-126
+10.10.10.127 ip-10-10-10-127
+做服务器的网络配置,初始化,hostname,/etc/hosts等相关配置
+关闭SElinux(base.sh)
+swap swapoff -a,/etc/fstab
+sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+2. 安装好docker
+使用脚本安装docker
+
+3.添加软件源
+https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-kubeadm-kubelet-and-kubectl
+
+4. 安装软件
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+systemctl enable kubelet && systemctl start kubelet && systemctl status kubelet
+
+5. 修改内核参数
+cat << EOF >  /etc/sysctl.d/k8s.conf 
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+/etc/sysctl.d/10-network-security.conf 这里的两个参数值改成1,ubuntu
+sysctl --system
+
+6. 初始化master,均在主节点操作
+cd /home/opts
+kubeadm config print init-defaults > kubeadm-init.yaml #修改生成好的文件
+kubeadm config images pull --config kubeadm-init.yaml #下载镜像
+kubeadm init --config kubeadm-init.yaml #执行初始化，保存生成好的命令
+kubeadm join 192.168.53.131:6443 --token abcdef.0123456789abcdef \
+    --discovery-token-ca-cert-hash sha256:d8e177d7007b707739d4431486a135289ed76977a8bb74dd6d7552abcda660b8 #此命令可以复制到其他主机执行，用于添加节点,根据提示添加节点
+
+或者
+kubeadm config images pull #下载镜像
+kubeadm init --service-cidr=10.96.0.0/12 \
+--pod-network-cidr=10.244.0.0/16
+
+  mkdir -p $HOME/.kube
+  cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  chown $(id -u):$(id -g) $HOME/.kube/config
+
+或者
+kubeadm config images pull #下载镜像
+master高可用
+kubeadm init --control-plane-endpoint "10.10.10.129:8443" --upload-certs --service-cidr=10.96.0.0/12 --pod-network-cidr=10.244.0.0/16 
+kubeadm init --control-plane-endpoint "10.10.10.129:8443" --upload-certs --pod-network-cidr=10.244.0.0/16 
+
+创建master单机的
+kubeadm init --kubernetes-version=v1.20.4 --upload-certs --service-cidr=10.96.0.0/12 --pod-network-cidr=10.244.0.0/16
+
+生成命令，在其他机器添加master
+ --control-plane-endpoint是ha 虚拟ip,可以使用keepalived配置,同时使用nginx或者haproxy代理6443端口
+
+两个子网在iptables里面放行,iptables 关掉默认的，清理干净规则，利用iptables-save查看管理
+
+mkdir -p $HOME/.kube && sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+7. 配置网络,主节点操作
+wget https://docs.projectcalico.org/manifests/calico.yaml #下载文件
+cat kubeadm-init.yaml | grep serviceSubnet: #查看
+打开calico.yaml, 将192.168.0.0/16修改为10.96.0.0/12
+kubectl apply -f calico.yaml #初始化网络
+kubectl get node #查看节点
+
+如果手动建过自定义网络,请删除
+docker network rm selfnetwork
+建议添加网卡匹配，以免多网卡出现问题
+            - name: IP_AUTODETECTION_METHOD
+              value: "interface=ens.*"
+
+安装calicoctl查看网络配置状态
+wget -O /usr/local/bin/calicoctl   https://github.com/projectcalico/calicoctl/releases/download/v3.16.3/calicoctl
+chmod +x /usr/local/bin/calicoctl
+calicoctl node status
+
+或者安装kube flannel网络
+wget https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml #修改网段
+kubectl apply -f kube-flannel.yml
+
+或者官网建议
+kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+
+mkdir -p $HOME/.kube && sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+8. 安装部署Dashboard
+建议iptables forward规则完全放行,不然可能会出现创建应用失败的情况
+
+https://github.com/kubernetes/dashboard
+wget https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0/aio/deploy/recommended.yaml #下载文件
+kubectl apply -f recommended.yaml #安装
+kubectl get pods --all-namespaces #查看pods状态 
+kubectl get pods --all-namespaces | grep dashboard
+
+9. 创建Dashboard管理用户并且生成证书
+cat dashboard-adminuser.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kube-system
+
+kubectl apply -f dashboard-adminuser.yaml
+grep 'client-certificate-data' ~/.kube/config | head -n 1 | awk '{print $2}' | base64 -d >> kubecfg.crt
+grep 'client-key-data' ~/.kube/config | head -n 1 | awk '{print $2}' | base64 -d >> kubecfg.key
+openssl pkcs12 -export -clcerts -inkey kubecfg.key -in kubecfg.crt -out kubecfg.p12 -name "kubernetes-client"
+
+10. 客户端电脑导入上述生成的证书并且登陆面板
+https://192.168.53.131:6443/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/#/login
+
+kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}') #查看token
+
+
+
+搭建 gfs_1存储 的 docker-compose
+version: '2'
+services:
+    gfs:
+        image: docker-harbor.clubs999.com/public/gluster/gluster-centos
+        network_mode: host
+        restart: always
+        privileged: true
+        volumes:
+            - /home/glusterfs/data:/var/lib/glusterd:rw
+            - /home/glusterfs/volume:/data:rw
+            - /home/glusterfs/logs:/var/log/glusterfs:rw
+            - /home/glusterfs/conf:/etc/glusterfs:rw
+            - /dev:/dev:rw
+            - /etc/hosts:/etc/hosts:rw
+
+
+
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: glusterfs-cluster-jd855-prod #名字,后面会指向
+  namespace: jd855-prod
+  labels:
+    name: glusterfs-cluster-jd855-prod # 名字label
+subsets:
+- addresses:
+  - ip: 192.168.100.117 #gfs ip
+  ports:
+  - port: 24007 #可以随便填一个
+  
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: glusterfs-cluster-jd855-prod #指向之前创建的endpoints,命名一致
+  namespace: jd855-prod
+  labels:
+    name: glusterfs-cluster-jd855-prod # 名字label
+spec:
+  ports:
+  - port: 25000 #随便
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gluster-volumes-jd855-prod #名字
+  namespace: jd855-prod #命名空间
+  labels:
+    pv: gluster-volumes-jd855-prod # 名字label
+  annotations:
+    pv.beta.kubernetes.io/gid: "590" 
+spec:
+  capacity:
+    storage: 200Gi #大小,
+  accessModes: 
+    - ReadWriteMany
+  glusterfs:
+    endpoints: glusterfs-cluster-jd855-prod  #指向创建的endpoint
+    path: gfs #gfs volume
+    readOnly: false
+  persistentVolumeReclaimPolicy: Retain
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gluster-claim-pub #名字
+  namespace: jd855-prod #命名空间
+spec:
+  accessModes:
+  - ReadWriteMany      
+  resources:
+     requests:
+       storage: 200Gi   #大小,
+  selector:
+     matchLabels:
+       pv: gluster-volumes-jd855-prod #指向的pv,pv需要定义这个label
