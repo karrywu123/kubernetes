@@ -442,4 +442,159 @@ https://172.16.10.121:6443/api/v1/namespaces/kubernetes-dashboard/services/https
 
 kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}') #查看token
 
+搭建 gfs存储
+172.16.10.123  172.16.10.124搭建的docker 集群存储
+
+yum install -y glusterfs glusterfs-fuse
+搭建 gfs_1存储 的 docker-compose
+version: '2'
+services:
+    gfs:
+        image: docker-harbor.clubs999.com/public/gluster/gluster-centos
+        network_mode: host
+        restart: always
+        privileged: true
+        volumes:
+            - /home/glusterfs/data:/var/lib/glusterd:rw
+            - /home/glusterfs/volume:/data:rw
+            - /home/glusterfs/logs:/var/log/glusterfs:rw
+            - /home/glusterfs/conf:/etc/glusterfs:rw
+            - /dev:/dev:rw
+            - /etc/hosts:/etc/hosts:rw
+
+ docker-enter gfs-docker_gfs_1
+
+单机
+
+gluster volume create gfs  gfs1:/data/gfs  force
+
+
+
+集群
+gluster peer probe gfs2
+gluster peer status
+gluster volume create gfs replica 2 gfs1:/data/gfs gfs2:/data/gfs force
+gluster volume info
+gluster volume start gfs
+gluster volume list
+gluster volume info
+gluster volume status
+
+在master都挂载
+mount -t glusterfs 172.16.10.125:gfs1 /home/gluster-data/
+
+
+global_defs {
+   router_id LVS_DEVEL
+}
+vrrp_instance VI_1 {
+    state BACKUP
+    nopreempt
+    interface ens192
+    virtual_router_id 80
+    priority 50
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass just0kk
+    }
+    virtual_ipaddress {
+        172.16.10.125
+    }
+}
+virtual_server 172.16.10.125 6443 {
+    delay_loop 6
+    lb_algo loadbalance
+    lb_kind DR    net_mask 255.255.255.0
+    persistence_timeout 0
+    protocol TCP
+    real_server 172.16.10.123 6443 {
+        weight 1
+        SSL_GET {
+            url {
+              path /healthz
+              status_code 200
+            }
+            connect_timeout 3
+            nb_get_retry 3
+            delay_before_retry 3
+        }
+    }
+    real_server 172.16.10.124 6443 {
+        weight 1
+        SSL_GET {
+            url {
+              path /healthz
+              status_code 200
+            }
+            connect_timeout 3
+            nb_get_retry 3
+            delay_before_retry 3
+        }
+    }
+
+}
+
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: glusterfs-cluster-default-prod #名字,后面会指向
+  namespace: default
+  labels:
+    name: glusterfs-cluster-default-prod # 名字label
+subsets:
+- addresses:
+  - ip: 172.16.10.123 #gfs ip
+  ports:
+  - port: 24007 #可以随便填一个
+
+-------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: glusterfs-cluster-default-prod #指向之前创建的endpoints,命名一致
+  namespace: default
+  labels:
+    name: glusterfs-cluster-default-prod # 名字label
+spec:
+  ports:
+  - port: 25000 #随便
+
+--------------
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gluster-volumes-default-prod #名字
+  namespace: default #命名空间
+  labels:
+    pv: gluster-volumes-default-prod # 名字label
+  annotations:
+    pv.beta.kubernetes.io/gid: "590" 
+spec:
+  capacity:
+    storage: 100Gi #大小,
+  accessModes: 
+    - ReadWriteMany
+  glusterfs:
+    endpoints: glusterfs-cluster-default-prod  #指向创建的endpoint
+    path: gfs #gfs volume
+    readOnly: false
+  persistentVolumeReclaimPolicy: Retain
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gluster-claim-default-pub #名字
+  namespace: default #命名空间
+spec:
+  accessModes:
+  - ReadWriteMany      
+  resources:
+     requests:
+       storage: 100Gi   #大小,
+  selector:
+     matchLabels:
+       pv: gluster-volumes-default-prod #指向的pv,pv需要定义这个label
 
