@@ -481,7 +481,7 @@ gluster volume info
 gluster volume status
 
 在master都挂载
-mount -t glusterfs 172.16.10.125:gfs1 /home/gluster-data/
+mount -t glusterfs 172.16.10.125:gfs /home/gluster-data/
 
 
 global_defs {
