@@ -597,4 +597,12 @@ spec:
   selector:
      matchLabels:
        pv: gluster-volumes-default-prod #指向的pv,pv需要定义这个label
+       
+       
+git clone https://github.com/prometheus-operator/kube-prometheus.git
+kubectl create -f manifests/setup
+until kubectl get servicemonitors --all-namespaces ; do date; sleep 1; echo ""; done
+kubectl create -f manifests/
+卸载
+kubectl delete --ignore-not-found=true -f manifests/ -f manifests/setup
 
