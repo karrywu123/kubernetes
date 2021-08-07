@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<config>
+  <!-->命名空间,决定项目名称<-->
+  <namespace>jd855-prod</namespace>
+  <projects>
+    <project>
+      <name>jbosstest</name> <javaname>jboss.war</javaname> <type>jboss</type> <ports>8080</ports> <domains>jboss.com</domains>
+    </project>
+    <project>
+      <name>jartest</name> <javaname>war.war</javaname> <type>jar</type> <ports>8880</ports> <domains>jartest.com</domains>
+    </project>
+    <project>
+      <name>targettest</name> <javaname>java.jar</javaname> <type>target.zip</type> <ports>6007,6008</ports> <domains>targettest.com</domains>
+    </project>
+	<project>
+      <name>htmltest</name> <javaname>index.html</javaname> <type>html</type> <ports>80</ports> <domains>htmltest.com</domains>
+    </project>
+    
+    <project>
+      <name>service</name> <javaname>jd855_service.jar</javaname> <type>jar</type> <ports>8888</ports> <domains>service.com</domains>
+    </project>
+    <project>
+      <name>mng</name> <javaname>jd855_mng.jar</javaname> <type>jar</type> <ports>8088</ports> <domains>mng.com</domains>
+    </project>
+    <project>
+      <name>api</name> <javaname>jd855_api.jar</javaname> <type>jar</type> <ports>8087</ports> <domains>api.com</domains>
+    </project>
+  </projects>
+</config>
+	
