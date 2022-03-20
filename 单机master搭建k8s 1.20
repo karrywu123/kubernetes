@@ -605,4 +605,24 @@ until kubectl get servicemonitors --all-namespaces ; do date; sleep 1; echo ""; 
 kubectl create -f manifests/
 卸载
 kubectl delete --ignore-not-found=true -f manifests/ -f manifests/setup
+####################################################################
+kubernetes-dashboard 证书续期步骤
+
+kubeadm alpha certs renew all
+
+kubeadm init phase kubeconfig all
+
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+
+chown $(id -u):$(id -g) $HOME/.kube/config
+
+docker ps -a | grep -v pause | grep -E "etcd|scheduler|controller|apiserver" | awk '{print $1}' | awk '{print "docker","restart",$1}' | bash
+
+systemctl restart kubelet
+
+
+
+
+
+
 
